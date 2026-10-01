@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>통합 문서1 - Excel</title>
+<meta name="description" content="스프레드시트처럼 생긴 2048 게임. 방향키로 숫자를 합치세요. 보스키(Esc)를 누르면 즉시 평범한 시트로 전환됩니다.">
+<link rel="canonical" href="https://seam0814.github.io/sheetgame/">
+<style>
+  :root{--line:#d4d4d4;--head:#f3f3f3;--sel:#107c41;--bar:#217346}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Calibri","맑은 고딕","Malgun Gothic",sans-serif;background:#e6e6e6;color:#222;font-size:13px}
+  .titlebar{background:var(--bar);color:#fff;padding:6px 12px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+  .ribbon{background:var(--head);border-bottom:1px solid var(--line);padding:6px 12px;display:flex;gap:16px;color:#444;overflow-x:auto;white-space:nowrap}
+  .ribbon b{font-weight:600}
+  .formbar{display:flex;align-items:center;gap:8px;background:#fff;border-bottom:1px solid var(--line);padding:4px 10px}
+  .namebox{width:54px;border:1px solid var(--line);padding:2px 6px;color:#444}
+  .fx{color:#888}
+  .formval{flex:1;color:#333}
+  .sheetwrap{overflow:auto;background:#fff;padding:0}
+  table{border-collapse:collapse;background:#fff}
+  td,th{border:1px solid var(--line);height:26px;min-width:64px;text-align:right;padding:2px 8px;font-variant-numeric:tabular-nums}
+  th{background:var(--head);color:#666;text-align:center;font-weight:600;min-width:64px}
+  th.rown{min-width:30px;width:30px}
+  td.lbl{text-align:left;color:#333;font-weight:600;background:#fbfbfb}
+  td.cell{cursor:default;transition:background .08s}
+  .status{padding:6px 12px;background:var(--head);border-top:1px solid var(--line);color:#555;display:flex;justify-content:space-between;font-size:12px}
+  .tabs{display:flex;gap:2px;padding:4px 10px;background:#fff;border-top:1px solid var(--line)}
+  .tab{padding:3px 12px;border:1px solid var(--line);border-bottom:none;background:#f3f3f3;color:#555;font-size:12px}
+  .tab.on{background:#fff;color:var(--sel);font-weight:600}
+  .hint{padding:8px 12px;color:#888;font-size:11px;background:#fff}
+  /* boss overlay */
+  #boss{position:fixed;inset:0;background:#fff;z-index:50;display:none;overflow:auto}
+  #boss.show{display:block}
+  /* win/lose toast */
+  #toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:6px;z-index:60;display:none;font-size:13px}
+  #toast.show{display:block}
+</style>
+</head>
+<body>
+<div class="titlebar"><span>통합 문서1 - Excel</span><span>— ☐ ✕</span></div>
+<div class="ribbon"><b>파일</b> <span>홈</span> <span>삽입</span> <span>페이지 레이아웃</span> <span>수식</span> <span>데이터</span> <span>검토</span> <span>보기</span></div>
+<div class="formbar"><span class="namebox" id="namebox">B3</span><span class="fx">fx</span><span class="formval" id="formval">=SUM(B3:E6)</span></div>
+<div class="sheetwrap">
+  <table id="sheet"></table>
+  <div class="hint">↑↓←→ 또는 WASD로 숫자 합치기 · 같은 수 2개가 만나면 2배 · <b>Esc</b>=상사 왔을 때(즉시 전환)</div>
+</div>
+<div class="status"><span id="st-left">준비</span><span id="st-right">합계: 0</span></div>
+<div class="tabs"><span class="tab on">3분기실적</span><span class="tab">예산</span><span class="tab">Sheet3</span><span>＋</span></div>
+
+<div id="boss">
+  <div class="titlebar"><span>분기보고서_최종_v4.xlsx - Excel</span><span>— ☐ ✕</span></div>
+  <div class="ribbon"><b>파일</b> <span>홈</span> <span>삽입</span> <span>수식</span> <span>데이터</span> <span>검토</span> <span>보기</span></div>
+  <div class="formbar"><span class="namebox">C7</span><span class="fx">fx</span><span class="formval">=D7*1.1</span></div>
+  <div class="sheetwrap"><table id="bosssheet"></table>
+  <div class="hint">아무 키나 누르면 돌아갑니다…</div></div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  var COLS=["A","B","C","D","E","F","G"]; // game in B..E
+  var ROWS=10;
+  var g=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+  var score=0, paused=false, over=false;
+  var GR0=2, GC0=1; // game occupies spreadsheet data rows index 2..5 (row3..6), cols index 1..4 (B..E)
+
+  // build sheet
+  var sheet=document.getElementById("sheet"), html="<tr><th class='rown'></th>";
+  COLS.forEach(function(c){html+="<th>"+c+"</th>"});html+="</tr>";
+  for(var r=0;r<ROWS;r++){html+="<tr><th class='rown'>"+(r+1)+"</th>";
+    for(var c=0;c<COLS.length;c++){html+="<td class='cell' id='cell-"+r+"-"+c+"'></td>"}html+="</tr>"}
+  sheet.innerHTML=html;
+  // some labels for legit look
+  setCell(0,0,"3분기 실적",true); setCell(1,1,"1월"); setCell(1,2,"2월"); setCell(1,3,"3월"); setCell(1,4,"분기계");
+  setCell(0,6,"합계",true);
+  function setCell(r,c,v,lbl){var el=document.getElementById("cell-"+r+"-"+c);if(!el)return;el.textContent=v;if(lbl)el.className="cell lbl"}
+
+  function colorFor(v){
+    if(!v)return "";
+    var levels={2:"#e8f5e9",4:"#c8e6c9",8:"#a5d6a7",16:"#81c784",32:"#66bb6a",64:"#4caf50",128:"#43a047",256:"#2e7d32",512:"#1b5e20",1024:"#145a32",2048:"#0b3d1f"};
+    return levels[v]||"#0b3d1f";
+  }
+  function render(){
+    for(var r=0;r<4;r++)for(var c=0;c<4;c++){
+      var el=document.getElementById("cell-"+(GR0+r)+"-"+(GC0+c));
+      var v=g[r][c];el.textContent=v?v:"";el.style.background=colorFor(v);
+      el.style.color=v>=16?"#fff":"#1b5e20";el.style.fontWeight=v?"600":"400";el.style.textAlign="center";
+    }
+    document.getElementById("st-right").textContent="합계: "+score;
+    document.getElementById("formval").textContent="=SUM(B3:E6)   "+(score||0);
+  }
+  function slideLeft(row){var a=row.filter(function(v){return v});
+    for(var i=0;i<a.length-1;i++){if(a[i]===a[i+1]){a[i]*=2;score+=a[i];a.splice(i+1,1)}}
+    while(a.length<4)a.push(0);return a;}
+  function transpose(m){var n=[];for(var c=0;c<4;c++)n.push([m[0][c],m[1][c],m[2][c],m[3][c]]);return n}
+  function rev(m){return m.map(function(r){return r.slice().reverse()})}
+  function moveLeft(m){return m.map(slideLeft)}
+  function doMove(dir){var before=JSON.stringify(g),m=g;
+    if(dir==="left")m=moveLeft(m);
+    else if(dir==="right")m=rev(moveLeft(rev(m)));
+    else if(dir==="up")m=transpose(moveLeft(transpose(m)));
+    else if(dir==="down")m=transpose(rev(moveLeft(rev(transpose(m)))));
+    g=m;return JSON.stringify(g)!==before;}
+  function spawn(){var e=[];for(var r=0;r<4;r++)for(var c=0;c<4;c++)if(!g[r][c])e.push([r,c]);
+    if(!e.length)return;var p=e[Math.floor(Math.random()*e.length)];g[p[0]][p[1]]=Math.random()<0.9?2:4;}
+  function canMove(){for(var r=0;r<4;r++)for(var c=0;c<4;c++){if(!g[r][c])return true;
+    if(c<3&&g[r][c]===g[r][c+1])return true;if(r<3&&g[r][c]===g[r+1][c])return true}return false}
+  function toast(t){var el=document.getElementById("toast");el.textContent=t;el.classList.add("show");setTimeout(function(){el.classList.remove("show")},2500)}
+  function step(dir){
+    if(paused||over)return;
+    if(doMove(dir)){spawn();render();
+      if(!canMove()){over=true;toast("게임 오버! F5로 새 '데이터' 불러오기 😅")}
+      else{var won=false;for(var r=0;r<4;r++)for(var c=0;c<4;c++)if(g[r][c]===2048)won=true;
+        if(won)toast("2048 달성! 🎉 (계속 가능)")}
+    }
+  }
+  var KEY={ArrowLeft:"left",ArrowRight:"right",ArrowUp:"up",ArrowDown:"down",a:"left",d:"right",w:"up",s:"down"};
+  window.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){toggleBoss();e.preventDefault();return}
+    if(document.getElementById("boss").classList.contains("show")){toggleBoss();return}
+    var dir=KEY[e.key]||KEY[(e.key||"").toLowerCase()];
+    if(dir){e.preventDefault();step(dir)}
+  });
+  // touch
+  var sx=0,sy=0;
+  document.addEventListener("touchstart",function(e){if(!e.touches[0])return;sx=e.touches[0].clientX;sy=e.touches[0].clientY},{passive:true});
+  document.addEventListener("touchend",function(e){if(!e.changedTouches[0])return;
+    var dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
+    if(Math.abs(dx)<24&&Math.abs(dy)<24)return;
+    step(Math.abs(dx)>Math.abs(dy)?(dx>0?"right":"left"):(dy>0?"down":"up"));
+  },{passive:true});
+
+  // boss sheet (static, boring, legit-looking)
+  var bs=document.getElementById("bosssheet"),bh="<tr><th class='rown'></th>";
+  ["A","B","C","D","E","F"].forEach(function(c){bh+="<th>"+c+"</th>"});bh+="</tr>";
+  var labels=["항목","1월","2월","3월","4월","합계"];
+  var rows=[["매출","1,240","1,310","1,455","1,520","5,525"],["매출원가","720","760","810","845","3,135"],
+    ["판관비","310","325","330","340","1,305"],["영업이익","210","225","315","335","1,085"],
+    ["영업이익률","16.9%","17.2%","21.6%","22.0%","19.6%"],["비고","","예산 대비","+3.2%","검토요망",""]];
+  bh+="<tr><th class='rown'>1</th>"+labels.map(function(x){return "<td class='cell lbl'>"+x+"</td>"}).join("")+"</tr>";
+  rows.forEach(function(rw,i){bh+="<tr><th class='rown'>"+(i+2)+"</th>"+rw.map(function(x,j){return "<td class='cell"+(j===0?" lbl":"")+"'>"+x+"</td>"}).join("")+"</tr>"});
+  for(var k=0;k<4;k++){bh+="<tr><th class='rown'>"+(k+8)+"</th>"+[0,0,0,0,0,0].map(function(){return "<td class='cell'></td>"}).join("")+"</tr>"}
+  bs.innerHTML=bh;
+  function toggleBoss(){document.getElementById("boss").classList.toggle("show")}
+
+  render();
+  document.getElementById("st-left").textContent="셀 B3 준비됨";
+})();
+</script>
+</body>
+</html>
