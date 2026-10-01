@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3분기 실적관리 - Excel</title>
+<meta name="description" content="스프레드시트처럼 생긴 방치형(idle) 게임. 거의 안 눌러도 매출이 저절로 쌓입니다. 보스키(Esc)로 즉시 전환. 쉬엄쉬엄 즐기는 사무실 게임.">
+<link rel="canonical" href="https://seam0814.github.io/sheetgame/idle/">
+<style>
+  :root{--line:#d4d4d4;--head:#f3f3f3;--sel:#107c41;--bar:#217346}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Calibri","맑은 고딕","Malgun Gothic",sans-serif;background:#e6e6e6;color:#222;font-size:13px}
+  .titlebar{background:var(--bar);color:#fff;padding:6px 12px;display:flex;justify-content:space-between}
+  .ribbon{background:var(--head);border-bottom:1px solid var(--line);padding:6px 12px;display:flex;gap:16px;color:#444;overflow-x:auto;white-space:nowrap}
+  .formbar{display:flex;align-items:center;gap:8px;background:#fff;border-bottom:1px solid var(--line);padding:4px 10px}
+  .namebox{width:54px;border:1px solid var(--line);padding:2px 6px;color:#444}.fx{color:#888}.formval{flex:1;color:#333}
+  .sheetwrap{background:#fff}
+  table{border-collapse:collapse;width:100%}
+  td,th{border:1px solid var(--line);height:28px;padding:3px 8px;font-variant-numeric:tabular-nums}
+  th{background:var(--head);color:#666;text-align:center;font-weight:600}
+  th.rown{width:30px;min-width:30px}
+  td.lbl{color:#333;font-weight:600;background:#fbfbfb}
+  td.num{text-align:right}
+  .big{font-size:1.5rem;font-weight:700;color:var(--sel);text-align:right}
+  button.x{font:inherit;border:1px solid var(--line);background:#f8f8f8;border-radius:4px;padding:3px 10px;cursor:pointer;color:#217346}
+  button.x:hover{background:#eafaf0;border-color:var(--sel)}
+  button.x:disabled{color:#bbb;cursor:default;background:#f3f3f3}
+  .clickbtn{display:block;width:100%;padding:14px;margin:10px 0;border:none;border-radius:8px;background:linear-gradient(100deg,#21a366,#107c41);color:#fff;font-size:1.05rem;font-weight:700;cursor:pointer}
+  .clickbtn:active{transform:scale(.99)}
+  .hint{padding:8px 12px;color:#888;font-size:11px;background:#fff}
+  .hint a{color:#217346}
+  .status{padding:6px 12px;background:var(--head);border-top:1px solid var(--line);color:#555;display:flex;justify-content:space-between;font-size:12px}
+  .tabs{display:flex;gap:2px;padding:4px 10px;background:#fff;border-top:1px solid var(--line)}
+  .tab{padding:3px 12px;border:1px solid var(--line);border-bottom:none;background:#f3f3f3;color:#555;font-size:12px}
+  .tab.on{background:#fff;color:var(--sel);font-weight:600}
+  #boss{position:fixed;inset:0;background:#fff;z-index:50;display:none;overflow:auto}
+  #boss.show{display:block}
+</style>
+</head>
+<body>
+<div class="titlebar"><span>3분기 실적관리 - Excel</span><span>— ☐ ✕</span></div>
+<div class="ribbon"><b>파일</b> <span>홈</span> <span>삽입</span> <span>수식</span> <span>데이터</span> <span>검토</span> <span>보기</span></div>
+<div class="formbar"><span class="namebox">B2</span><span class="fx">fx</span><span class="formval" id="formval">=실적!B2</span></div>
+<div class="sheetwrap">
+  <table>
+    <tr><th class="rown"></th><th>A</th><th>B</th><th>C</th></tr>
+    <tr><th class="rown">1</th><td class="lbl">항목</td><td class="lbl" style="text-align:right">값</td><td class="lbl">비고</td></tr>
+    <tr><th class="rown">2</th><td class="lbl">누적 매출</td><td class="num big" id="money">0</td><td id="rate">초당 +0</td></tr>
+    <tr><th class="rown">3</th><td class="lbl">수동 입력 단가</td><td class="num" id="per">1</td><td>클릭당</td></tr>
+  </table>
+  <button class="clickbtn" id="click">＋ 매출 입력 (수동)</button>
+  <table id="ups"></table>
+  <div class="hint">버튼을 눌러 매출을 올리고, 아래 '채용/설비'를 사면 <b>저절로</b> 쌓여요(방치 OK). <b>Esc</b>=상사 왔을 때 · <a href="../">🔢 2048 시트</a></div>
+</div>
+<div class="status"><span id="st">자동 저장됨</span><span id="st2">실적관리.xlsx</span></div>
+<div class="tabs"><span class="tab on">실적</span><span class="tab">예산</span><span class="tab">인사</span><span>＋</span></div>
+
+<div id="boss">
+  <div class="titlebar"><span>분기보고서_최종_v4.xlsx - Excel</span><span>— ☐ ✕</span></div>
+  <div class="ribbon"><b>파일</b> <span>홈</span> <span>삽입</span> <span>수식</span> <span>데이터</span> <span>검토</span></div>
+  <div class="formbar"><span class="namebox">C7</span><span class="fx">fx</span><span class="formval">=D7*1.1</span></div>
+  <div class="sheetwrap"><table id="bosssheet"></table><div class="hint">아무 키나 누르면 돌아갑니다…</div></div>
+</div>
+
+<script>
+(function(){
+  var UPS=[
+    {id:"intern",name:"인턴 채용",base:15,inc:1},
+    {id:"staff",name:"사원 채용",base:120,inc:8},
+    {id:"deputy",name:"대리 승진",base:1300,inc:47},
+    {id:"team",name:"팀 신설",base:14000,inc:260},
+    {id:"auto",name:"자동화 설비",base:200000,inc:1400},
+    {id:"ai",name:"AI 도입",base:3300000,inc:7800}
+  ];
+  var S={money:0,per:1,counts:{}};
+  try{var sv=localStorage.getItem("idle_save");if(sv){S=JSON.parse(sv)}}catch(e){}
+  UPS.forEach(function(u){if(!S.counts[u.id])S.counts[u.id]=0});
+  function autoRate(){var r=0;UPS.forEach(function(u){r+=u.inc*(S.counts[u.id]||0)});return r}
+  function cost(u){return Math.floor(u.base*Math.pow(1.15,S.counts[u.id]||0))}
+  function fmt(n){n=Math.floor(n);
+    if(n>=1e12)return (n/1e12).toFixed(2)+"조";
+    if(n>=1e8)return (n/1e8).toFixed(2)+"억";
+    if(n>=1e4)return (n/1e4).toFixed(1)+"만";
+    return n.toLocaleString();}
+  var $=function(s){return document.querySelector(s)};
+  function renderUps(){
+    var h="<tr><th class='rown'>5</th><td class='lbl'>채용·설비</td><td class='lbl' style='text-align:right'>보유</td><td class='lbl'>구매</td></tr>";
+    UPS.forEach(function(u,i){var c=cost(u),afford=S.money>=c;
+      h+="<tr><th class='rown'>"+(6+i)+"</th><td class='lbl'>"+u.name+" <span style='color:#999;font-weight:400'>(초당 +"+u.inc+")</span></td>"
+        +"<td class='num'>"+(S.counts[u.id]||0)+"</td>"
+        +"<td><button class='x' data-id='"+u.id+"' "+(afford?"":"disabled")+">"+fmt(c)+" 구매</button></td></tr>";
+    });
+    $("#ups").innerHTML=h;
+    $("#ups").querySelectorAll("button[data-id]").forEach(function(b){b.addEventListener("click",function(){buy(b.getAttribute("data-id"))})});
+  }
+  function buy(id){var u=UPS.filter(function(x){return x.id===id})[0],c=cost(u);
+    if(S.money>=c){S.money-=c;S.counts[id]=(S.counts[id]||0)+1;save();render()}}
+  function render(){
+    $("#money").textContent=fmt(S.money);
+    $("#rate").textContent="초당 +"+fmt(autoRate());
+    $("#per").textContent=S.per;
+    $("#formval").textContent="=실적!B2   "+Math.floor(S.money).toLocaleString();
+    renderUps();
+  }
+  function save(){try{localStorage.setItem("idle_save",JSON.stringify(S))}catch(e){}}
+  $("#click").addEventListener("click",function(){S.money+=S.per;render()});
+  // tick
+  setInterval(function(){S.money+=autoRate()/10;
+    $("#money").textContent=fmt(S.money);
+    // refresh buy affordability lightly
+    $("#ups").querySelectorAll("button[data-id]").forEach(function(b){var u=UPS.filter(function(x){return x.id===b.getAttribute("data-id")})[0];b.disabled=S.money<cost(u)});
+  },100);
+  setInterval(save,3000);
+  // boss
+  var bs=$("#bosssheet"),bh="<tr><th class='rown'></th>";["A","B","C","D","E","F"].forEach(function(c){bh+="<th>"+c+"</th>"});bh+="</tr>";
+  var labels=["항목","1월","2월","3월","4월","합계"];
+  var rows=[["매출","1,240","1,310","1,455","1,520","5,525"],["매출원가","720","760","810","845","3,135"],["판관비","310","325","330","340","1,305"],["영업이익","210","225","315","335","1,085"],["영업이익률","16.9%","17.2%","21.6%","22.0%","19.6%"]];
+  bh+="<tr><th class='rown'>1</th>"+labels.map(function(x){return "<td class='lbl'>"+x+"</td>"}).join("")+"</tr>";
+  rows.forEach(function(rw,i){bh+="<tr><th class='rown'>"+(i+2)+"</th>"+rw.map(function(x,j){return "<td class='"+(j===0?"lbl":"num")+"'>"+x+"</td>"}).join("")+"</tr>"});
+  bs.innerHTML=bh;
+  window.addEventListener("keydown",function(e){if(e.key==="Escape"){document.getElementById("boss").classList.toggle("show");e.preventDefault();return}
+    if(document.getElementById("boss").classList.contains("show"))document.getElementById("boss").classList.remove("show")});
+  render();
+})();
+</script>
+</body>
+</html>
